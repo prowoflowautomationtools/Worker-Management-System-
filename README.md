@@ -10,6 +10,10 @@ The deployable app lives in:
 
 Open `outputs/attendance-payroll-app/index.html` locally, or publish it through the included GitHub Pages workflow.
 
+## Repository
+
+https://github.com/prowoflowautomationtools/Worker-Management-System-.git
+
 ## GitHub Pages Deployment
 
 This repository includes `.github/workflows/pages.yml`. When pushed to GitHub, the workflow publishes `outputs/attendance-payroll-app` to GitHub Pages.
@@ -21,9 +25,9 @@ After the repository is pushed:
 3. Set `Build and deployment` source to `GitHub Actions`.
 4. Run the `Deploy WorkPay India to GitHub Pages` workflow, or push to `main`.
 
-The live URL will normally be:
+The live URL will be:
 
-`https://<github-username>.github.io/<repository-name>/`
+`https://prowoflowautomationtools.github.io/Worker-Management-System-/`
 
 ## Version Log
 
