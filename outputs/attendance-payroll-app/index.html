@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f6b5e">
+  <meta name="description" content="Worker attendance, leave, payroll and wage tracking for Indian worksites.">
+  <title>Worker Attendance & Payroll</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">WP</div>
+        <div>
+          <strong>WorkPay India</strong>
+          <span>Attendance and wages</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
+        <button class="nav-item" data-view="workers" type="button">Workers</button>
+        <button class="nav-item" data-view="attendance" type="button">Attendance</button>
+        <button class="nav-item" data-view="leave" type="button">Leave & Holidays</button>
+        <button class="nav-item" data-view="reports" type="button">Reports</button>
+        <button class="nav-item" data-view="settings" type="button">Settings</button>
+      </nav>
+
+      <div class="storage-note">
+        <strong>Local first</strong>
+        <span>IndexedDB records, LocalStorage preferences, SessionStorage filters.</span>
+      </div>
+    </aside>
+
+    <main class="main" id="mainContent" tabindex="-1">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel">Today</p>
+          <h1 id="viewTitle">Dashboard</h1>
+        </div>
+        <div class="top-actions">
+          <button class="ghost-button" id="exportJsonBtn" type="button">Export JSON</button>
+          <label class="import-label">
+            Import JSON
+            <input id="importJsonInput" type="file" accept="application/json">
+          </label>
+        </div>
+      </header>
+
+      <section id="dashboard" class="view active-view">
+        <div class="metrics-grid">
+          <article class="metric-card">
+            <span>Workers</span>
+            <strong id="metricWorkers">0</strong>
+            <small>Active profiles</small>
+          </article>
+          <article class="metric-card">
+            <span>Present Today</span>
+            <strong id="metricPresent">0</strong>
+            <small>Checked-in or completed</small>
+          </article>
+          <article class="metric-card">
+            <span>Net Hours Today</span>
+            <strong id="metricHours">0h 00m</strong>
+            <small>Breaks deducted</small>
+          </article>
+          <article class="metric-card">
+            <span>Wages Today</span>
+            <strong id="metricWages">&#8377;0.00</strong>
+            <small>Calculated to the minute</small>
+          </article>
+        </div>
+
+        <div class="split-layout">
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Today Attendance</h2>
+              <button class="text-button" id="quickCheckInBtn" type="button">Open entry</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Worker</th>
+                    <th>In</th>
+                    <th>Out</th>
+                    <th>Net</th>
+                    <th>Wage</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="todayTable"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Upcoming Leave & Holidays</h2>
+              <button class="text-button" id="quickLeaveBtn" type="button">Add record</button>
+            </div>
+            <div id="upcomingLeaveList" class="stack-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="workers" class="view">
+        <div class="split-layout wide-left">
+          <form id="workerForm" class="panel form-panel">
+            <div class="panel-heading">
+              <h2 id="workerFormTitle">Add Worker</h2>
+              <button class="text-button hidden" id="cancelWorkerEditBtn" type="button">Cancel edit</button>
+            </div>
+            <input type="hidden" id="workerId">
+            <div class="form-grid">
+              <label>Full name
+                <input id="workerName" required autocomplete="name" placeholder="e.g. Ramesh Kumar">
+              </label>
+              <label>Main phone number
+                <input id="workerPhone" required inputmode="tel" placeholder="10 digit mobile">
+              </label>
+              <label>WhatsApp number
+                <input id="workerWhatsapp" inputmode="tel" placeholder="Same as main if blank">
+              </label>
+              <label>Email
+                <input id="workerEmail" type="email" autocomplete="email" placeholder="Optional">
+              </label>
+              <label>Website
+                <input id="workerWebsite" type="url" placeholder="Optional">
+              </label>
+              <label>Other contact
+                <input id="workerOtherContact" placeholder="Optional">
+              </label>
+              <label>Worker type/category
+                <select id="workerType"></select>
+              </label>
+              <label id="customTypeWrap" class="hidden">Custom worker type
+                <input id="customWorkerType" placeholder="e.g. Welder">
+              </label>
+              <label>Wage type
+                <select id="wageType">
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Daily</option>
+                  <option value="task">Task based</option>
+                </select>
+              </label>
+              <label>Standard hours per day
+                <input id="standardHours" type="number" min="0" step="0.25" value="8">
+              </label>
+              <label>Hourly rate (&#8377;)
+                <input id="hourlyRate" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label>Daily rate (&#8377;)
+                <input id="dailyRate" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label>Overtime rate per hour (&#8377;)
+                <input id="overtimeRate" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label>Task rate (&#8377; per unit)
+                <input id="taskRate" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label>Daily allowance/extra (&#8377;)
+                <input id="allowance" type="number" min="0" step="0.01" value="0">
+              </label>
+            </div>
+            <label>Additional compensation settings
+              <textarea id="compensationNotes" rows="3" placeholder="PF/ESI notes, site allowance, piece-rate notes, or contractor terms"></textarea>
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Save worker</button>
+              <button class="ghost-button" id="seedDemoBtn" type="button">Load demo data</button>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Worker Directory</h2>
+              <input id="workerSearch" class="compact-input" placeholder="Search workers">
+            </div>
+            <div id="workerList" class="worker-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="attendance" class="view">
+        <div class="split-layout wide-left">
+          <form id="attendanceForm" class="panel form-panel">
+            <div class="panel-heading">
+              <h2 id="attendanceFormTitle">Record Attendance</h2>
+              <button class="text-button hidden" id="cancelAttendanceEditBtn" type="button">Cancel edit</button>
+            </div>
+            <input type="hidden" id="attendanceId">
+            <div class="form-grid">
+              <label>Worker
+                <select id="attendanceWorker" required></select>
+              </label>
+              <label>Date
+                <input id="attendanceDate" type="date" required>
+              </label>
+              <label>Day
+                <input id="attendanceDay" readonly>
+              </label>
+              <label>Status
+                <select id="attendanceStatus">
+                  <option value="present">Present</option>
+                  <option value="half-day">Half-day</option>
+                  <option value="absent">Absent</option>
+                  <option value="holiday">Holiday</option>
+                  <option value="leave">Leave</option>
+                </select>
+              </label>
+              <label>Check-in time
+                <input id="checkIn" type="time">
+              </label>
+              <label>Check-out time
+                <input id="checkOut" type="time">
+              </label>
+              <label>Task units completed
+                <input id="taskUnits" type="number" min="0" step="0.01" value="0">
+              </label>
+              <label>Task rate override (&#8377;)
+                <input id="taskRateOverride" type="number" min="0" step="0.01" placeholder="Optional">
+              </label>
+            </div>
+
+            <div class="subsection-heading">
+              <h3>Breaks</h3>
+              <button class="ghost-button small-button" id="addBreakBtn" type="button">Add break</button>
+            </div>
+            <div id="breakRows" class="break-list"></div>
+
+            <label>Attendance notes
+              <textarea id="attendanceNotes" rows="3" placeholder="Site, shift, late reason, supervisor note"></textarea>
+            </label>
+
+            <div class="calc-preview" id="attendancePreview"></div>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Save attendance</button>
+              <button class="ghost-button" id="resetAttendanceBtn" type="button">Clear</button>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Attendance Records</h2>
+              <select id="attendanceFilterWorker" class="compact-input"></select>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Worker</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                    <th>Net</th>
+                    <th>Wage</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="attendanceHistory"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="leave" class="view">
+        <div class="split-layout wide-left">
+          <form id="leaveForm" class="panel form-panel">
+            <div class="panel-heading">
+              <h2 id="leaveFormTitle">Record Leave or Holiday</h2>
+              <button class="text-button hidden" id="cancelLeaveEditBtn" type="button">Cancel edit</button>
+            </div>
+            <input type="hidden" id="leaveId">
+            <div class="form-grid">
+              <label>Worker
+                <select id="leaveWorker"></select>
+              </label>
+              <label>Type
+                <select id="leaveType">
+                  <option value="paid-leave">Paid leave</option>
+                  <option value="unpaid-leave">Unpaid leave</option>
+                  <option value="sick-leave">Sick leave</option>
+                  <option value="festival-holiday">Festival holiday</option>
+                  <option value="national-holiday">National holiday</option>
+                  <option value="site-holiday">Site holiday</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>Start date
+                <input id="leaveStart" type="date" required>
+              </label>
+              <label>End date
+                <input id="leaveEnd" type="date" required>
+              </label>
+            </div>
+            <label>Reason or explanation
+              <textarea id="leaveReason" rows="4" required placeholder="Reason, approving person, or holiday description"></textarea>
+            </label>
+            <label>Supporting document or attachment
+              <input id="leaveAttachment" type="file">
+            </label>
+            <div id="attachmentInfo" class="attachment-info"></div>
+            <button class="ghost-button small-button hidden" id="removeAttachmentBtn" type="button">Remove attachment</button>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Save record</button>
+              <button class="ghost-button" id="resetLeaveBtn" type="button">Clear</button>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Leave & Holiday Records</h2>
+              <select id="leaveFilterWorker" class="compact-input"></select>
+            </div>
+            <div id="leaveList" class="stack-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="reports" class="view">
+        <section class="panel">
+          <div class="panel-heading report-heading">
+            <h2>Reports</h2>
+            <div class="report-controls">
+              <select id="reportPreset" class="compact-input">
+                <option value="today">Today</option>
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+                <option value="fy">Current financial year</option>
+                <option value="custom">Custom range</option>
+              </select>
+              <input id="reportFrom" class="compact-input" type="date">
+              <input id="reportTo" class="compact-input" type="date">
+              <select id="reportWorker" class="compact-input"></select>
+              <button class="ghost-button" id="exportCsvBtn" type="button">Export CSV</button>
+            </div>
+          </div>
+
+          <div class="metrics-grid compact-metrics">
+            <article class="metric-card">
+              <span>Attendance Days</span>
+              <strong id="reportDays">0</strong>
+              <small>Present or half-day rows</small>
+            </article>
+            <article class="metric-card">
+              <span>Net Working Hours</span>
+              <strong id="reportNetHours">0h 00m</strong>
+              <small>After breaks</small>
+            </article>
+            <article class="metric-card">
+              <span>Overtime</span>
+              <strong id="reportOvertime">0h 00m</strong>
+              <small>Beyond standard hours</small>
+            </article>
+            <article class="metric-card">
+              <span>Total Wages</span>
+              <strong id="reportWages">&#8377;0.00</strong>
+              <small>Regular, OT, task, extras</small>
+            </article>
+          </div>
+
+          <div class="report-grid">
+            <div>
+              <h3>Worker wise</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Worker</th>
+                      <th>Category</th>
+                      <th>Days</th>
+                      <th>Net</th>
+                      <th>OT</th>
+                      <th>Wage</th>
+                    </tr>
+                  </thead>
+                  <tbody id="workerReportRows"></tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h3>Category wise</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Workers</th>
+                      <th>Days</th>
+                      <th>Net</th>
+                      <th>Wage</th>
+                    </tr>
+                  </thead>
+                  <tbody id="categoryReportRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <h3>Detailed ledger</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Day</th>
+                  <th>Worker</th>
+                  <th>Status</th>
+                  <th>In/Out</th>
+                  <th>Break</th>
+                  <th>Net</th>
+                  <th>OT</th>
+                  <th>Wage</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="ledgerRows"></tbody>
+            </table>
+          </div>
+
+          <h3>Leave and holidays in range</h3>
+          <div id="reportLeaveRows" class="stack-list"></div>
+        </section>
+      </section>
+
+      <section id="settings" class="view">
+        <section class="panel form-panel settings-panel">
+          <div class="panel-heading">
+            <h2>Settings</h2>
+          </div>
+          <div class="form-grid">
+            <label>Business/site name
+              <input id="settingBusinessName" placeholder="Optional">
+            </label>
+            <label>Default standard hours
+              <input id="settingDefaultHours" type="number" min="0" step="0.25" value="8">
+            </label>
+            <label>Daily wage policy
+              <select id="settingDailyPolicy">
+                <option value="prorated">Prorate daily wage by net minutes</option>
+                <option value="full-day">Pay full day after any attendance</option>
+              </select>
+            </label>
+            <label>Overtime threshold
+              <select id="settingOvertimeMode">
+                <option value="standard">Worker standard hours</option>
+                <option value="none">Disable overtime</option>
+              </select>
+            </label>
+            <label>Theme
+              <select id="settingTheme">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label>Date display
+              <select id="settingDateFormat">
+                <option value="ddmmyyyy">DD/MM/YYYY</option>
+                <option value="medium">DD Mon YYYY</option>
+              </select>
+            </label>
+          </div>
+          <div class="settings-copy">
+            <h3>Database design</h3>
+            <p>IndexedDB object stores: workers, attendance, leaveRecords. Each attendance record references a worker id and stores break rows as structured nested data. LocalStorage stores app settings and master data. SessionStorage stores the last report filter. A cookie stores the last opened view for convenient return.</p>
+          </div>
+          <div class="form-actions">
+            <button class="primary-button" id="saveSettingsBtn" type="button">Save settings</button>
+          </div>
+
+          <div class="settings-crud-grid">
+            <section class="settings-copy">
+              <h3>Worker category CRUD</h3>
+              <div class="inline-form">
+                <input id="workerTypeName" placeholder="Add category, e.g. Welder">
+                <button class="ghost-button" id="saveWorkerTypeBtn" type="button">Add category</button>
+              </div>
+              <div id="workerTypeList" class="master-list"></div>
+            </section>
+
+            <section class="settings-copy">
+              <h3>Break type CRUD</h3>
+              <div class="inline-form">
+                <input id="breakTypeName" placeholder="Add break type, e.g. Prayer">
+                <button class="ghost-button" id="saveBreakTypeBtn" type="button">Add break type</button>
+              </div>
+              <div id="breakTypeList" class="master-list"></div>
+            </section>
+          </div>
+
+          <section class="settings-copy">
+            <h3>Data operations</h3>
+            <p>Use JSON export/import for full backup and restore. Delete all local records removes workers, attendance, leave/holiday records, attachments, and saved preferences from this browser.</p>
+            <div class="form-actions">
+              <button class="ghost-button" id="resetAllDataBtn" type="button">Delete all local records</button>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+  <script>
+    if (location.protocol !== "file:") {
+      var pwaScript = document.createElement("script");
+      pwaScript.src = "pwa.js";
+      document.body.appendChild(pwaScript);
+    }
+  </script>
+</body>
+</html>

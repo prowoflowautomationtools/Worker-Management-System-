@@ -1,0 +1,20 @@
+{
+  "name": "WorkPay India Attendance & Payroll",
+  "short_name": "WorkPay India",
+  "description": "Worker attendance, leave, holiday, wage and payroll tracking for Indian worksites.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#0f6b5e",
+  "orientation": "any",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

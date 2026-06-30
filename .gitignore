@@ -1,0 +1,8 @@
+.agents/
+.codex/
+work/
+
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
