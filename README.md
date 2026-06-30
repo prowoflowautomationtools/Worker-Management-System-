@@ -32,3 +32,9 @@ The live URL will be:
 ## Version Log
 
 See [CHANGELOG.md](CHANGELOG.md).
+
+## Architecture and Customization
+
+This project is documented in business-process order so non-technical stakeholders and technical contributors can understand and customize it more easily.
+
+Start with [docs/README.md](docs/README.md).
