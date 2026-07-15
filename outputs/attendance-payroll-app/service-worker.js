@@ -1,11 +1,12 @@
 "use strict";
 
-const CACHE_NAME = "workpay-india-shell-v2";
+const CACHE_NAME = "workpay-india-shell-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./report-worker.js",
   "./pwa.js",
   "./manifest.webmanifest",
   "./icon.svg"

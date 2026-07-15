@@ -2,11 +2,15 @@
   "use strict";
 
   var DB_NAME = "workpay-india-db";
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var SETTINGS_KEY = "workpay.settings.v1";
   var REPORT_FILTER_KEY = "workpay.reportFilter.v1";
   var DEFAULT_TYPES = ["Mason", "Helper", "Electrician", "Plumber", "Carpenter", "Painter", "Driver", "Security", "Housekeeping", "Other"];
   var DEFAULT_BREAK_TYPES = ["Lunch", "Tea", "Rest", "Other"];
+  var DEFAULT_CURRENCY = "INR";
+  var reportWorkerState = { worker: null, pending: {}, sequence: 0 };
+  var deferredReportTimer = 0;
+  var reportRenderToken = 0;
   var db;
   var state = {
     workers: [],
@@ -63,7 +67,8 @@
       "leaveReason", "leaveAttachment", "attachmentInfo", "removeAttachmentBtn", "resetLeaveBtn", "leaveFilterWorker", "leaveList",
       "reportPreset", "reportFrom", "reportTo", "reportWorker", "exportCsvBtn", "reportDays", "reportNetHours",
       "reportOvertime", "reportWages", "workerReportRows", "categoryReportRows", "ledgerRows", "reportLeaveRows",
-      "settingBusinessName", "settingDefaultHours", "settingDailyPolicy", "settingOvertimeMode", "settingTheme", "settingDateFormat",
+      "settingBusinessName", "settingCurrencyCode", "settingDefaultHours", "settingDailyPolicy", "settingOvertimeMode", "settingTheme", "settingTimeFormat", "settingDateFormat", "settingYearMode",
+      "settingPublicHolidays", "settingEstablishmentState", "settingPfEnabled", "settingEsiEnabled", "settingTdsEnabled", "settingPtEnabled", "settingStatutoryNotes",
       "saveSettingsBtn", "workerTypeName", "saveWorkerTypeBtn", "workerTypeList", "breakTypeName", "saveBreakTypeBtn",
       "breakTypeList", "resetAllDataBtn", "exportJsonBtn", "importJsonInput"
     ].forEach(function (id) {
@@ -87,7 +92,7 @@
     refs.workerForm.addEventListener("submit", saveWorker);
     refs.cancelWorkerEditBtn.addEventListener("click", resetWorkerForm);
     refs.workerType.addEventListener("change", toggleCustomType);
-    refs.workerSearch.addEventListener("input", renderWorkers);
+    refs.workerSearch.addEventListener("input", debounce(renderWorkers, 80));
     refs.seedDemoBtn.addEventListener("click", seedDemoData);
 
     refs.attendanceForm.addEventListener("submit", saveAttendance);
@@ -145,6 +150,12 @@
     refs.resetAllDataBtn.addEventListener("click", resetAllData);
     refs.exportJsonBtn.addEventListener("click", exportJson);
     refs.importJsonInput.addEventListener("change", importJson);
+
+    [refs.workerForm, refs.attendanceForm, refs.leaveForm].forEach(bindValidationListeners);
+    [refs.reportFrom, refs.reportTo, refs.settingPublicHolidays, refs.settingDefaultHours].forEach(function (field) {
+      field.addEventListener("input", function () { clearFieldError(field); });
+      field.addEventListener("change", function () { clearFieldError(field); });
+    });
   }
 
   function openDb() {
@@ -152,20 +163,28 @@
       var request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = function () {
         var database = request.result;
-        if (!database.objectStoreNames.contains("workers")) {
-          database.createObjectStore("workers", { keyPath: "id" });
-        }
-        if (!database.objectStoreNames.contains("attendance")) {
-          var attendanceStore = database.createObjectStore("attendance", { keyPath: "id" });
-          attendanceStore.createIndex("workerId", "workerId", { unique: false });
-          attendanceStore.createIndex("date", "date", { unique: false });
-        }
-        if (!database.objectStoreNames.contains("leaveRecords")) {
-          var leaveStore = database.createObjectStore("leaveRecords", { keyPath: "id" });
-          leaveStore.createIndex("workerId", "workerId", { unique: false });
-          leaveStore.createIndex("startDate", "startDate", { unique: false });
-          leaveStore.createIndex("endDate", "endDate", { unique: false });
-        }
+        var workersStore = database.objectStoreNames.contains("workers")
+          ? request.transaction.objectStore("workers")
+          : database.createObjectStore("workers", { keyPath: "id" });
+        ensureIndex(workersStore, "nameKey", "nameKey", false);
+        ensureIndex(workersStore, "phoneDigits", "phoneDigits", false);
+        ensureIndex(workersStore, "type", "type", false);
+
+        var attendanceStore = database.objectStoreNames.contains("attendance")
+          ? request.transaction.objectStore("attendance")
+          : database.createObjectStore("attendance", { keyPath: "id" });
+        ensureIndex(attendanceStore, "workerId", "workerId", false);
+        ensureIndex(attendanceStore, "date", "date", false);
+        ensureIndex(attendanceStore, "workerDate", ["workerId", "date"], false);
+        ensureIndex(attendanceStore, "status", "status", false);
+
+        var leaveStore = database.objectStoreNames.contains("leaveRecords")
+          ? request.transaction.objectStore("leaveRecords")
+          : database.createObjectStore("leaveRecords", { keyPath: "id" });
+        ensureIndex(leaveStore, "workerId", "workerId", false);
+        ensureIndex(leaveStore, "startDate", "startDate", false);
+        ensureIndex(leaveStore, "endDate", "endDate", false);
+        ensureIndex(leaveStore, "type", "type", false);
       };
       request.onsuccess = function () {
         resolve(request.result);
@@ -226,9 +245,9 @@
 
   function refreshAll() {
     return Promise.all([getAll("workers"), getAll("attendance"), getAll("leaveRecords")]).then(function (results) {
-      state.workers = results[0].sort(byName);
-      state.attendance = results[1].sort(byDateDesc);
-      state.leaveRecords = results[2].sort(byLeaveDateDesc);
+      state.workers = results[0].map(normalizeWorkerRecord).sort(byName);
+      state.attendance = results[1].map(normalizeAttendanceRecord).sort(byDateDesc);
+      state.leaveRecords = results[2].map(normalizeLeaveRecord).sort(byLeaveDateDesc);
       renderAll();
     });
   }
@@ -241,7 +260,7 @@
     renderWorkers();
     renderAttendanceHistory();
     renderLeaveRecords();
-    renderReports();
+    queueReportsRender();
   }
 
   function switchView(view) {
@@ -262,6 +281,7 @@
     });
     refs.viewTitle.textContent = document.querySelector('.nav-item[data-view="' + view + '"]').textContent;
     document.title = refs.viewTitle.textContent + " | WorkPay India";
+    if (view === "reports") queueReportsRender(true);
   }
 
   function setupStaticDates() {
@@ -272,21 +292,23 @@
   function loadSettings() {
     var fallback = {
       businessName: "",
+      currencyCode: DEFAULT_CURRENCY,
       defaultHours: 8,
       dailyPolicy: "prorated",
       overtimeMode: "standard",
       theme: "light",
+      timeFormat: "24h",
       dateFormat: "ddmmyyyy",
+      yearMode: "financial",
+      publicHolidays: getDefaultPublicHolidays(),
+      statutoryConfig: createDefaultStatutoryConfig(),
       workerTypes: DEFAULT_TYPES.slice(),
       breakTypes: DEFAULT_BREAK_TYPES.slice()
     };
     try {
-      var merged = Object.assign(fallback, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"));
-      if (!Array.isArray(merged.workerTypes)) merged.workerTypes = DEFAULT_TYPES.slice();
-      if (!Array.isArray(merged.breakTypes)) merged.breakTypes = DEFAULT_BREAK_TYPES.slice();
-      return merged;
+      return normalizeSettings(Object.assign(fallback, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")));
     } catch (error) {
-      return fallback;
+      return normalizeSettings(fallback);
     }
   }
 
@@ -296,23 +318,66 @@
 
   function restoreSettingsForm() {
     refs.settingBusinessName.value = state.settings.businessName || "";
+    refs.settingCurrencyCode.value = state.settings.currencyCode || DEFAULT_CURRENCY;
     refs.settingDefaultHours.value = state.settings.defaultHours || 8;
     refs.settingDailyPolicy.value = state.settings.dailyPolicy || "prorated";
     refs.settingOvertimeMode.value = state.settings.overtimeMode || "standard";
     refs.settingTheme.value = state.settings.theme || "light";
+    refs.settingTimeFormat.value = state.settings.timeFormat || "24h";
     refs.settingDateFormat.value = state.settings.dateFormat || "ddmmyyyy";
+    refs.settingYearMode.value = state.settings.yearMode || "financial";
+    refs.settingPublicHolidays.value = formatPublicHolidayLines(state.settings.publicHolidays);
+    refs.settingEstablishmentState.value = state.settings.statutoryConfig.establishmentState || "";
+    refs.settingPfEnabled.value = String(!!state.settings.statutoryConfig.modules.pf.enabled);
+    refs.settingEsiEnabled.value = String(!!state.settings.statutoryConfig.modules.esi.enabled);
+    refs.settingTdsEnabled.value = String(!!state.settings.statutoryConfig.modules.tds.enabled);
+    refs.settingPtEnabled.value = String(!!state.settings.statutoryConfig.modules.professionalTax.enabled);
+    refs.settingStatutoryNotes.value = state.settings.statutoryConfig.notes || "";
+    syncReportPresetOption();
   }
 
   function saveSettingsForm() {
+    clearFormErrors(refs.workerForm);
+    clearFormErrors(refs.attendanceForm);
+    clearFormErrors(refs.leaveForm);
+    clearFieldError(refs.settingPublicHolidays);
     state.settings.businessName = refs.settingBusinessName.value.trim();
+    state.settings.currencyCode = refs.settingCurrencyCode.value || DEFAULT_CURRENCY;
     state.settings.defaultHours = numberValue(refs.settingDefaultHours.value, 8);
+    if (state.settings.defaultHours <= 0) {
+      reportValidation(refs.settingDefaultHours, "Default standard hours must be greater than zero.");
+      return;
+    }
     state.settings.dailyPolicy = refs.settingDailyPolicy.value;
     state.settings.overtimeMode = refs.settingOvertimeMode.value;
     state.settings.theme = refs.settingTheme.value;
+    state.settings.timeFormat = refs.settingTimeFormat.value || "24h";
     state.settings.dateFormat = refs.settingDateFormat.value;
+    state.settings.yearMode = refs.settingYearMode.value || "financial";
+    var holidayParse = parsePublicHolidayInput(refs.settingPublicHolidays.value);
+    if (!holidayParse.ok) {
+      setFieldError(refs.settingPublicHolidays, holidayParse.message);
+      showToast(holidayParse.message);
+      return;
+    }
+    state.settings.publicHolidays = holidayParse.holidays;
+    state.settings.statutoryConfig = {
+      establishmentState: refs.settingEstablishmentState.value.trim(),
+      modules: {
+        pf: { enabled: refs.settingPfEnabled.value === "true" },
+        esi: { enabled: refs.settingEsiEnabled.value === "true" },
+        tds: { enabled: refs.settingTdsEnabled.value === "true" },
+        professionalTax: { enabled: refs.settingPtEnabled.value === "true" }
+      },
+      notes: refs.settingStatutoryNotes.value.trim()
+    };
+    state.settings = normalizeSettings(state.settings);
     normalizeMasterData();
     saveSettings();
     applyTheme();
+    setupStaticDates();
+    syncReportPresetOption();
+    if (refs.reportPreset.value === "year" || refs.reportPreset.value === "fy") applyReportPreset();
     renderAll();
     showToast("Settings saved.");
   }
@@ -501,15 +566,16 @@
 
   function saveWorker(event) {
     event.preventDefault();
+    clearFormErrors(refs.workerForm);
     var id = refs.workerId.value || makeId();
     var name = refs.workerName.value.trim();
-    var phone = refs.workerPhone.value.trim();
+    var phone = normalizePhone(refs.workerPhone.value);
     var type = refs.workerType.value === "Other" ? refs.customWorkerType.value.trim() : refs.workerType.value;
-    if (!name) return showToast("Worker full name is required.");
-    if (!isValidIndianPhone(phone)) return showToast("Enter a valid mandatory Indian mobile number.");
-    if (!type) return showToast("Worker type is required.");
-    var whatsapp = refs.workerWhatsapp.value.trim() || phone;
-    if (!isValidIndianPhone(whatsapp)) return showToast("Enter a valid WhatsApp mobile number or leave it blank.");
+    if (!name) return reportValidation(refs.workerName, "Worker full name is required.");
+    if (!isValidIndianPhone(phone)) return reportValidation(refs.workerPhone, "Enter a valid mandatory Indian mobile number.");
+    if (!type) return reportValidation(refs.workerType.value === "Other" ? refs.customWorkerType : refs.workerType, "Worker type is required.");
+    var whatsapp = normalizePhone(refs.workerWhatsapp.value) || phone;
+    if (refs.workerWhatsapp.value.trim() && !isValidIndianPhone(whatsapp)) return reportValidation(refs.workerWhatsapp, "Enter a valid WhatsApp mobile number or leave it blank.");
 
     if (!Array.isArray(state.settings.workerTypes)) state.settings.workerTypes = DEFAULT_TYPES.slice();
     if (!state.settings.workerTypes.includes(type)) {
@@ -517,7 +583,8 @@
       saveSettings();
     }
 
-    var worker = {
+    var existing = getExisting("workers", id);
+    var worker = normalizeWorkerRecord({
       id: id,
       name: name,
       phone: phone,
@@ -534,11 +601,24 @@
       taskRate: numberValue(refs.taskRate.value, 0),
       allowance: numberValue(refs.allowance.value, 0),
       compensationNotes: refs.compensationNotes.value.trim(),
+      statutoryProfile: existing.statutoryProfile || createDefaultWorkerStatutoryProfile(),
       updatedAt: new Date().toISOString(),
-      createdAt: getExisting("workers", id).createdAt || new Date().toISOString()
-    };
+      createdAt: existing.createdAt || new Date().toISOString()
+    });
+    var wageValidation = validateWorkerWageConfig(worker);
+    if (!wageValidation.ok) return reportValidation(wageValidation.field, wageValidation.message);
 
-    put("workers", worker).then(refreshAll).then(function () {
+    findDuplicateWorker(worker).then(function (duplicate) {
+      if (duplicate) {
+        reportValidation(refs.workerPhone, "Another worker already uses this phone number. Update the existing profile instead.");
+        return null;
+      }
+      return put("workers", worker);
+    }).then(function (saved) {
+      if (!saved) return false;
+      return refreshAll().then(function () { return true; });
+    }).then(function (didSave) {
+      if (!didSave) return;
       resetWorkerForm();
       showToast("Worker saved.");
     }).catch(showError);
@@ -596,13 +676,14 @@
     refs.overtimeRate.value = 0;
     refs.taskRate.value = 0;
     refs.allowance.value = 0;
+    clearFormErrors(refs.workerForm);
     renderWorkerTypeOptions();
   }
 
   function renderWorkers() {
     var query = (refs.workerSearch.value || "").trim().toLowerCase();
     var workers = state.workers.filter(function (worker) {
-      return !query || [worker.name, worker.phone, worker.type, worker.email, worker.whatsapp].join(" ").toLowerCase().includes(query);
+      return !query || (worker.searchText || [worker.name, worker.phone, worker.type, worker.email, worker.whatsapp].join(" ").toLowerCase()).includes(query);
     });
     refs.workerList.innerHTML = workers.length ? workers.map(function (worker) {
       return '<article class="worker-card">' +
@@ -675,42 +756,54 @@
     event.preventDefault();
     var record = buildAttendanceFromForm();
     if (!record) return;
-    var duplicate = state.attendance.find(function (row) {
-      return row.id !== record.id && row.workerId === record.workerId && row.date === record.date;
-    });
-    if (duplicate) {
-      showToast("This worker already has an attendance record for that date.");
-      return;
-    }
-    put("attendance", record).then(refreshAll).then(function () {
+    findDuplicateAttendance(record).then(function (duplicate) {
+      if (duplicate) {
+        reportValidation(refs.attendanceDate, "This worker already has an attendance record for that date.");
+        return null;
+      }
+      return put("attendance", record);
+    }).then(function (saved) {
+      if (!saved) return false;
+      return refreshAll().then(function () { return true; });
+    }).then(function (didSave) {
+      if (!didSave) return;
       resetAttendanceForm();
       showToast("Attendance saved.");
     }).catch(showError);
   }
 
   function buildAttendanceFromForm() {
+    clearFormErrors(refs.attendanceForm);
     var worker = getWorker(refs.attendanceWorker.value);
     var status = refs.attendanceStatus.value;
     var date = refs.attendanceDate.value;
     if (!worker) {
-      showToast("Select a worker.");
+      reportValidation(refs.attendanceWorker, "Select a worker.");
       return null;
     }
     if (!date) {
-      showToast("Select a date.");
+      reportValidation(refs.attendanceDate, "Select a date.");
       return null;
     }
     var needsTime = status === "present" || status === "half-day";
     var checkIn = refs.checkIn.value;
     var checkOut = refs.checkOut.value;
     if (needsTime && (!checkIn || !checkOut)) {
-      showToast("Check-in and check-out are required for present or half-day attendance.");
+      reportValidation(!checkIn ? refs.checkIn : refs.checkOut, "Check-in and check-out are required for present or half-day attendance.");
+      return null;
+    }
+    if (numberValue(refs.taskUnits.value, 0) < 0) {
+      reportValidation(refs.taskUnits, "Task units cannot be negative.");
+      return null;
+    }
+    if (refs.taskRateOverride.value !== "" && numberValue(refs.taskRateOverride.value, 0) < 0) {
+      reportValidation(refs.taskRateOverride, "Task rate override cannot be negative.");
       return null;
     }
     var breaks = collectBreaks();
     var validation = validateTimes(checkIn, checkOut, breaks, needsTime);
     if (!validation.ok) {
-      showToast(validation.message);
+      reportValidation(validation.field || refs.checkOut, validation.message);
       return null;
     }
     var id = refs.attendanceId.value || makeId();
@@ -751,6 +844,7 @@
     refs.cancelAttendanceEditBtn.classList.remove("hidden");
     updateAttendanceDay();
     updateAttendancePreview();
+    clearFormErrors(refs.attendanceForm);
     switchView("attendance");
   }
 
@@ -791,20 +885,21 @@
     if (!needsTime) return { ok: true };
     var start = timeToMinutes(checkIn);
     var end = timeToMinutes(checkOut);
-    if (end <= start) return { ok: false, message: "Check-out must be after check-in for the same work date." };
+    if (end <= start) return { ok: false, field: refs.checkOut, message: "Check-out must be after check-in for the same work date." };
     var ranges = [];
     for (var i = 0; i < breaks.length; i += 1) {
       var br = breaks[i];
-      if (!br.startTime || !br.endTime) return { ok: false, message: "Each break needs both start and end time." };
+      if (!br.startTime || !br.endTime) return { ok: false, field: refs.breakRows, message: "Each break needs both start and end time." };
       var bs = timeToMinutes(br.startTime);
       var be = timeToMinutes(br.endTime);
-      if (be <= bs) return { ok: false, message: "Break end must be after break start." };
-      if (bs < start || be > end) return { ok: false, message: "Breaks must fall inside check-in and check-out time." };
+      if (br.type === "Other" && !br.note) return { ok: false, field: refs.breakRows, message: "Add a note when the break type is Other." };
+      if (be <= bs) return { ok: false, field: refs.breakRows, message: "Break end must be after break start." };
+      if (bs < start || be > end) return { ok: false, field: refs.breakRows, message: "Breaks must fall inside check-in and check-out time." };
       ranges.push([bs, be]);
     }
     ranges.sort(function (a, b) { return a[0] - b[0]; });
     for (var j = 1; j < ranges.length; j += 1) {
-      if (ranges[j][0] < ranges[j - 1][1]) return { ok: false, message: "Break times cannot overlap." };
+      if (ranges[j][0] < ranges[j - 1][1]) return { ok: false, field: refs.breakRows, message: "Break times cannot overlap." };
     }
     return { ok: true };
   }
@@ -867,7 +962,7 @@
       return '<tr><td>' + formatDateShort(row.date) + '<br><span class="muted">' + escapeHtml(row.day) + '</span></td>' +
         '<td>' + escapeHtml(worker.name || "Unknown") + '</td>' +
         '<td class="status-' + escapeAttr(row.status) + '">' + escapeHtml(labelStatus(row.status)) + '</td>' +
-        '<td>' + (row.checkIn && row.checkOut ? escapeHtml(row.checkIn + " - " + row.checkOut) : "-") + '</td>' +
+        '<td>' + (row.checkIn && row.checkOut ? escapeHtml(formatTime(row.checkIn) + " - " + formatTime(row.checkOut)) : "-") + '</td>' +
         '<td>' + formatMinutes(calc.netMinutes) + '</td>' +
         '<td>' + formatMoney(calc.totalWage) + '</td>' +
         '<td><button class="text-button" data-edit-attendance="' + row.id + '" type="button">Edit</button>' +
@@ -878,11 +973,12 @@
 
   function saveLeaveRecord(event) {
     event.preventDefault();
+    clearFormErrors(refs.leaveForm);
     var startDate = refs.leaveStart.value;
     var endDate = refs.leaveEnd.value;
-    if (!startDate || !endDate) return showToast("Start and end date are required.");
-    if (endDate < startDate) return showToast("End date cannot be before start date.");
-    if (!refs.leaveReason.value.trim()) return showToast("Reason or explanation is required.");
+    if (!startDate || !endDate) return reportValidation(!startDate ? refs.leaveStart : refs.leaveEnd, "Start and end date are required.");
+    if (endDate < startDate) return reportValidation(refs.leaveEnd, "End date cannot be before start date.");
+    if (!refs.leaveReason.value.trim()) return reportValidation(refs.leaveReason, "Reason or explanation is required.");
     readAttachment(refs.leaveAttachment.files[0]).then(function (attachment) {
       var id = refs.leaveId.value || makeId();
       var existing = getExisting("leaveRecords", id);
@@ -929,6 +1025,7 @@
     refs.attachmentInfo.textContent = "";
     refs.removeAttachmentBtn.dataset.remove = "false";
     refs.removeAttachmentBtn.classList.add("hidden");
+    clearFormErrors(refs.leaveForm);
   }
 
   function markAttachmentForRemoval() {
@@ -952,6 +1049,7 @@
     refs.removeAttachmentBtn.classList.toggle("hidden", !record.attachment);
     refs.leaveFormTitle.textContent = "Edit Leave or Holiday";
     refs.cancelLeaveEditBtn.classList.remove("hidden");
+    clearFormErrors(refs.leaveForm);
     switchView("leave");
   }
 
@@ -964,8 +1062,8 @@
 
   function renderLeaveRecords() {
     var workerId = refs.leaveFilterWorker.value;
-    var rows = state.leaveRecords.filter(function (row) {
-      return !workerId || row.workerId === workerId;
+    var rows = getAllLeaveSources().filter(function (row) {
+      return !workerId || row.workerId === workerId || row.workerId === "";
     });
     refs.leaveList.innerHTML = rows.length ? rows.map(renderLeaveCard).join("") : '<div class="empty-state">No leave or holiday records.</div>';
     bindDynamicButtons(refs.leaveList);
@@ -973,11 +1071,14 @@
 
   function renderLeaveCard(row) {
     var worker = row.workerId ? getWorker(row.workerId) : null;
+    var actions = row.source === "settings-holiday"
+      ? '<div class="card-actions"><span class="tag">Manage in Settings</span></div>'
+      : '<div class="card-actions"><button class="text-button" data-edit-leave="' + row.id + '" type="button">Edit</button>' +
+        '<button class="text-button danger-link" data-delete-leave="' + row.id + '" type="button">Delete</button></div>';
     return '<article class="record-card">' +
       '<header><div><h3>' + escapeHtml(labelStatus(row.type)) + '</h3>' +
       '<div class="muted">' + formatDateShort(row.startDate) + ' to ' + formatDateShort(row.endDate) + ' | ' + escapeHtml(worker ? worker.name : "All workers / site") + '</div></div>' +
-      '<div class="card-actions"><button class="text-button" data-edit-leave="' + row.id + '" type="button">Edit</button>' +
-      '<button class="text-button danger-link" data-delete-leave="' + row.id + '" type="button">Delete</button></div></header>' +
+      actions + '</header>' +
       '<p>' + escapeHtml(row.reason) + '</p>' +
       (row.attachment ? '<a class="tag" href="' + row.attachment.dataUrl + '" download="' + escapeAttr(row.attachment.name) + '">Attachment: ' + escapeHtml(row.attachment.name) + '</a>' : '<span class="tag">No attachment</span>') +
       '</article>';
@@ -994,12 +1095,12 @@
     refs.todayTable.innerHTML = todayRows.length ? todayRows.map(function (row) {
       var worker = getWorker(row.workerId) || {};
       var calc = calculateAttendance(row, worker);
-      return '<tr><td>' + escapeHtml(worker.name || "Unknown") + '</td><td>' + (row.checkIn || "-") + '</td><td>' + (row.checkOut || "-") + '</td><td>' + formatMinutes(calc.netMinutes) + '</td><td>' + formatMoney(calc.totalWage) + '</td>' +
+      return '<tr><td>' + escapeHtml(worker.name || "Unknown") + '</td><td>' + (row.checkIn ? escapeHtml(formatTime(row.checkIn)) : "-") + '</td><td>' + (row.checkOut ? escapeHtml(formatTime(row.checkOut)) : "-") + '</td><td>' + formatMinutes(calc.netMinutes) + '</td><td>' + formatMoney(calc.totalWage) + '</td>' +
         '<td><button class="text-button" data-edit-attendance="' + row.id + '" type="button">Edit</button><button class="text-button danger-link" data-delete-attendance="' + row.id + '" type="button">Delete</button></td></tr>';
     }).join("") : '<tr><td colspan="6">No attendance recorded for today.</td></tr>';
     bindDynamicButtons(refs.todayTable);
 
-    var upcoming = state.leaveRecords.filter(function (row) {
+    var upcoming = getAllLeaveSources().filter(function (row) {
       return row.endDate >= today;
     }).slice(0, 5);
     refs.upcomingLeaveList.innerHTML = upcoming.length ? upcoming.map(renderLeaveCard).join("") : '<div class="empty-state">No upcoming leave or holiday records.</div>';
@@ -1013,7 +1114,7 @@
     } catch (error) {
       saved = {};
     }
-    refs.reportPreset.value = saved.preset || "month";
+    refs.reportPreset.value = saved.preset === "fy" ? "year" : (saved.preset || "month");
     applyReportPreset(saved.from, saved.to);
     refs.reportWorker.value = saved.workerId || "";
   }
@@ -1030,10 +1131,10 @@
     } else if (preset === "month") {
       refs.reportFrom.value = toDateInput(new Date(today.getFullYear(), today.getMonth(), 1));
       refs.reportTo.value = toDateInput(new Date(today.getFullYear(), today.getMonth() + 1, 0));
-    } else if (preset === "fy") {
-      var fyStartYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
-      refs.reportFrom.value = toDateInput(new Date(fyStartYear, 3, 1));
-      refs.reportTo.value = toDateInput(new Date(fyStartYear + 1, 2, 31));
+    } else if (preset === "year" || preset === "fy") {
+      var range = getCurrentYearRange(today, state.settings.yearMode);
+      refs.reportFrom.value = range.from;
+      refs.reportTo.value = range.to;
     } else {
       refs.reportFrom.value = savedFrom || refs.reportFrom.value || toDateInput(today);
       refs.reportTo.value = savedTo || refs.reportTo.value || toDateInput(today);
@@ -1050,63 +1151,54 @@
   }
 
   function renderReports() {
+    var token = ++reportRenderToken;
     var from = refs.reportFrom.value || toDateInput(new Date());
     var to = refs.reportTo.value || from;
     var workerId = refs.reportWorker.value;
     if (to < from) {
+      setFieldError(refs.reportTo, "End date cannot be earlier than start date. The end date was adjusted.");
       refs.reportTo.value = from;
       to = from;
+    } else {
+      clearFieldError(refs.reportTo);
     }
-    var rows = state.attendance.filter(function (row) {
-      return row.date >= from && row.date <= to && (!workerId || row.workerId === workerId);
-    }).map(function (row) {
-      var worker = getWorker(row.workerId) || {};
-      var calc = calculateAttendance(row, worker);
-      return Object.assign({}, row, { worker: worker, calculation: calc });
-    });
-    state.reportRows = rows;
-    var totals = sumCalculated(rows);
-    refs.reportDays.textContent = rows.filter(function (row) { return row.status === "present" || row.status === "half-day"; }).length;
-    refs.reportNetHours.textContent = formatMinutes(totals.netMinutes);
-    refs.reportOvertime.textContent = formatMinutes(totals.overtimeMinutes);
-    refs.reportWages.textContent = formatMoney(totals.totalWage);
-    renderWorkerWise(rows);
-    renderCategoryWise(rows);
-    renderLedger(rows);
-    renderReportLeaves(from, to, workerId);
+    buildReportDataset(from, to, workerId).then(function (payload) {
+      if (token !== reportRenderToken) return;
+      state.reportRows = payload.rows;
+      refs.reportDays.textContent = payload.attendanceDays;
+      refs.reportNetHours.textContent = formatMinutes(payload.totals.netMinutes);
+      refs.reportOvertime.textContent = formatMinutes(payload.totals.overtimeMinutes);
+      refs.reportWages.textContent = formatMoney(payload.totals.totalWage);
+      renderWorkerWise(payload.workerSummary);
+      renderCategoryWise(payload.categorySummary);
+      renderLedger(payload.rows);
+      renderReportLeaves(from, to, workerId);
+    }).catch(showError);
   }
 
-  function renderWorkerWise(rows) {
-    var grouped = groupBy(rows, function (row) { return row.workerId; });
-    refs.workerReportRows.innerHTML = Object.keys(grouped).length ? Object.keys(grouped).map(function (id) {
-      var list = grouped[id];
-      var worker = list[0].worker || {};
-      var totals = sumCalculated(list);
-      return '<tr><td>' + escapeHtml(worker.name || "Unknown") + '</td><td>' + escapeHtml(worker.type || "-") + '</td><td>' + list.length + '</td><td>' + formatMinutes(totals.netMinutes) + '</td><td>' + formatMinutes(totals.overtimeMinutes) + '</td><td>' + formatMoney(totals.totalWage) + '</td></tr>';
+  function renderWorkerWise(summary) {
+    refs.workerReportRows.innerHTML = summary.length ? summary.map(function (row) {
+      return '<tr><td>' + escapeHtml(row.name || "Unknown") + '</td><td>' + escapeHtml(row.type || "-") + '</td><td>' + row.days + '</td><td>' + formatMinutes(row.netMinutes) + '</td><td>' + formatMinutes(row.overtimeMinutes) + '</td><td>' + formatMoney(row.totalWage) + '</td></tr>';
     }).join("") : '<tr><td colspan="6">No records in selected range.</td></tr>';
   }
 
-  function renderCategoryWise(rows) {
-    var grouped = groupBy(rows, function (row) { return row.worker.type || "Unknown"; });
-    refs.categoryReportRows.innerHTML = Object.keys(grouped).length ? Object.keys(grouped).map(function (category) {
-      var list = grouped[category];
-      var totals = sumCalculated(list);
-      var workerCount = unique(list.map(function (row) { return row.workerId; })).length;
-      return '<tr><td>' + escapeHtml(category) + '</td><td>' + workerCount + '</td><td>' + list.length + '</td><td>' + formatMinutes(totals.netMinutes) + '</td><td>' + formatMoney(totals.totalWage) + '</td></tr>';
+  function renderCategoryWise(summary) {
+    refs.categoryReportRows.innerHTML = summary.length ? summary.map(function (row) {
+      return '<tr><td>' + escapeHtml(row.category) + '</td><td>' + row.workerCount + '</td><td>' + row.days + '</td><td>' + formatMinutes(row.netMinutes) + '</td><td>' + formatMoney(row.totalWage) + '</td></tr>';
     }).join("") : '<tr><td colspan="5">No records in selected range.</td></tr>';
   }
 
   function renderLedger(rows) {
     refs.ledgerRows.innerHTML = rows.length ? rows.sort(byDateDesc).map(function (row) {
       var calc = row.calculation;
-      return '<tr><td>' + formatDateShort(row.date) + '</td><td>' + escapeHtml(row.day) + '</td><td>' + escapeHtml(row.worker.name || "Unknown") + '</td><td class="status-' + escapeAttr(row.status) + '">' + escapeHtml(labelStatus(row.status)) + '</td><td>' + (row.checkIn && row.checkOut ? escapeHtml(row.checkIn + " - " + row.checkOut) : "-") + '</td><td>' + formatMinutes(calc.breakMinutes) + '</td><td>' + formatMinutes(calc.netMinutes) + '</td><td>' + formatMinutes(calc.overtimeMinutes) + '</td><td>' + formatMoney(calc.totalWage) + '</td>' +
+      return '<tr><td>' + formatDateShort(row.date) + '</td><td>' + escapeHtml(row.day) + '</td><td>' + escapeHtml(row.worker.name || "Unknown") + '</td><td class="status-' + escapeAttr(row.status) + '">' + escapeHtml(labelStatus(row.status)) + '</td><td>' + (row.checkIn && row.checkOut ? escapeHtml(formatTime(row.checkIn) + " - " + formatTime(row.checkOut)) : "-") + '</td><td>' + formatMinutes(calc.breakMinutes) + '</td><td>' + formatMinutes(calc.netMinutes) + '</td><td>' + formatMinutes(calc.overtimeMinutes) + '</td><td>' + formatMoney(calc.totalWage) + '</td>' +
         '<td><button class="text-button" data-edit-attendance="' + row.id + '" type="button">Edit</button><button class="text-button danger-link" data-delete-attendance="' + row.id + '" type="button">Delete</button></td></tr>';
     }).join("") : '<tr><td colspan="10">No attendance ledger rows.</td></tr>';
     bindDynamicButtons(refs.ledgerRows);
   }
 
   function renderReportLeaves(from, to, workerId) {
-    var rows = state.leaveRecords.filter(function (row) {
+    var rows = getAllLeaveSources().filter(function (row) {
       var overlaps = row.startDate <= to && row.endDate >= from;
       var workerMatches = !workerId || row.workerId === workerId || row.workerId === "";
       return overlaps && workerMatches;
@@ -1129,7 +1221,8 @@
     var payload = {
       exportedAt: new Date().toISOString(),
       app: "WorkPay India",
-      version: 1,
+      version: 2,
+      schemaVersion: DB_VERSION,
       settings: state.settings,
       workers: state.workers,
       attendance: state.attendance,
@@ -1151,11 +1244,11 @@
         if (!confirm("Import will replace local WorkPay data. Continue?")) return;
         Promise.all([clearStore("workers"), clearStore("attendance"), clearStore("leaveRecords")])
           .then(function () {
-            state.settings = Object.assign(loadSettings(), payload.settings || {});
+            state.settings = normalizeSettings(Object.assign(loadSettings(), payload.settings || {}));
             saveSettings();
-            return Promise.all(payload.workers.map(function (row) { return put("workers", row); })
-              .concat(payload.attendance.map(function (row) { return put("attendance", row); }))
-              .concat(payload.leaveRecords.map(function (row) { return put("leaveRecords", row); })));
+            return Promise.all(payload.workers.map(function (row) { return put("workers", normalizeWorkerRecord(row)); })
+              .concat(payload.attendance.map(function (row) { return put("attendance", normalizeAttendanceRecord(row)); }))
+              .concat(payload.leaveRecords.map(function (row) { return put("leaveRecords", normalizeLeaveRecord(row)); })));
           })
           .then(refreshAll)
           .then(function () {
@@ -1350,7 +1443,17 @@
   }
 
   function formatMoney(value) {
-    return "\u20B9" + moneyRaw(value);
+    var currency = state.settings.currencyCode || DEFAULT_CURRENCY;
+    try {
+      return new Intl.NumberFormat(getCurrencyLocale(currency), {
+        style: "currency",
+        currency: currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(value) || 0);
+    } catch (error) {
+      return currency + " " + moneyRaw(value);
+    }
   }
 
   function moneyRaw(value) {
@@ -1360,17 +1463,31 @@
   function formatDateShort(value) {
     if (!value) return "-";
     if ((state.settings && state.settings.dateFormat || "ddmmyyyy") === "ddmmyyyy") {
-      return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
+      return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Kolkata" });
     }
-    return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
   }
 
   function formatDateLong(value) {
-    return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+    return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Kolkata" });
+  }
+
+  function formatTime(value) {
+    if (!value) return "-";
+    if ((state.settings.timeFormat || "24h") === "24h") return value;
+    var parts = value.split(":");
+    var date = new Date();
+    date.setHours(Number(parts[0] || 0), Number(parts[1] || 0), 0, 0);
+    return new Intl.DateTimeFormat("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "Asia/Kolkata"
+    }).format(date);
   }
 
   function getDayName(value) {
-    return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long" });
+    return new Date(value + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", timeZone: "Asia/Kolkata" });
   }
 
   function toDateInput(date) {
@@ -1408,6 +1525,10 @@
 
   function unique(values) {
     return Array.from(new Set(values.filter(Boolean)));
+  }
+
+  function getCurrencyLocale(currency) {
+    return currency === "INR" ? "en-IN" : "en-US";
   }
 
   function labelStatus(value) {
@@ -1487,6 +1608,449 @@
         return /[",\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
       }).join(",");
     }).join("\n");
+  }
+
+  function ensureIndex(store, name, keyPath, unique) {
+    if (!store.indexNames.contains(name)) {
+      store.createIndex(name, keyPath, { unique: !!unique });
+    }
+  }
+
+  function createDefaultStatutoryConfig() {
+    return {
+      establishmentState: "",
+      modules: {
+        pf: { enabled: false },
+        esi: { enabled: false },
+        tds: { enabled: false },
+        professionalTax: { enabled: false }
+      },
+      notes: ""
+    };
+  }
+
+  function createDefaultWorkerStatutoryProfile() {
+    return {
+      pfEligible: false,
+      esiEligible: false,
+      tdsApplicable: false,
+      professionalTaxApplicable: false,
+      identifiers: {
+        uan: "",
+        esiNumber: "",
+        pan: ""
+      }
+    };
+  }
+
+  function getDefaultPublicHolidays() {
+    var year = new Date().getFullYear();
+    return [year, year + 1].reduce(function (all, currentYear) {
+      return all.concat([
+        { date: currentYear + "-01-26", name: "Republic Day", type: "national-holiday" },
+        { date: currentYear + "-08-15", name: "Independence Day", type: "national-holiday" },
+        { date: currentYear + "-10-02", name: "Gandhi Jayanti", type: "national-holiday" }
+      ]);
+    }, []);
+  }
+
+  function normalizeSettings(settings) {
+    var merged = Object.assign({}, settings);
+    merged.currencyCode = merged.currencyCode || DEFAULT_CURRENCY;
+    merged.timeFormat = merged.timeFormat === "12h" ? "12h" : "24h";
+    merged.dateFormat = merged.dateFormat || "ddmmyyyy";
+    merged.yearMode = merged.yearMode === "calendar" ? "calendar" : "financial";
+    merged.publicHolidays = normalizeHolidayList(Array.isArray(merged.publicHolidays) ? merged.publicHolidays : getDefaultPublicHolidays());
+    merged.statutoryConfig = normalizeStatutoryConfig(merged.statutoryConfig);
+    if (!Array.isArray(merged.workerTypes)) merged.workerTypes = DEFAULT_TYPES.slice();
+    if (!Array.isArray(merged.breakTypes)) merged.breakTypes = DEFAULT_BREAK_TYPES.slice();
+    return merged;
+  }
+
+  function normalizeStatutoryConfig(config) {
+    var merged = Object.assign(createDefaultStatutoryConfig(), config || {});
+    merged.modules = Object.assign(createDefaultStatutoryConfig().modules, config && config.modules || {});
+    merged.modules.pf = Object.assign({ enabled: false }, merged.modules.pf || {});
+    merged.modules.esi = Object.assign({ enabled: false }, merged.modules.esi || {});
+    merged.modules.tds = Object.assign({ enabled: false }, merged.modules.tds || {});
+    merged.modules.professionalTax = Object.assign({ enabled: false }, merged.modules.professionalTax || {});
+    return merged;
+  }
+
+  function normalizeHolidayList(list) {
+    return unique((Array.isArray(list) ? list : []).map(function (row) {
+      if (!row || !row.date) return "";
+      return JSON.stringify({
+        date: row.date,
+        name: String(row.name || "").trim() || "Holiday",
+        type: normalizeHolidayType(row.type)
+      });
+    })).map(function (row) {
+      return JSON.parse(row);
+    }).sort(function (a, b) {
+      return a.date.localeCompare(b.date) || a.name.localeCompare(b.name);
+    });
+  }
+
+  function normalizeHolidayType(value) {
+    return ["national-holiday", "festival-holiday", "site-holiday"].includes(value) ? value : "site-holiday";
+  }
+
+  function parsePublicHolidayInput(text) {
+    var lines = String(text || "").split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+    var seen = {};
+    var holidays = [];
+    for (var i = 0; i < lines.length; i += 1) {
+      var line = lines[i];
+      var parts = line.split("|").map(function (part) { return part.trim(); }).filter(Boolean);
+      if (parts.length < 2 || parts.length > 3) {
+        return { ok: false, message: "Holiday line " + (i + 1) + " must use: YYYY-MM-DD | Holiday name | type" };
+      }
+      var date = parts[0];
+      var name = parts[1];
+      var type = normalizeHolidayType(parts[2] || "national-holiday");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(date + "T00:00:00").getTime())) {
+        return { ok: false, message: "Holiday line " + (i + 1) + " has an invalid date." };
+      }
+      var key = date + "|" + name.toLowerCase();
+      if (seen[key]) {
+        return { ok: false, message: "Holiday line " + (i + 1) + " duplicates an earlier holiday entry." };
+      }
+      seen[key] = true;
+      holidays.push({ date: date, name: name, type: type });
+    }
+    return { ok: true, holidays: normalizeHolidayList(holidays) };
+  }
+
+  function formatPublicHolidayLines(list) {
+    return normalizeHolidayList(list).map(function (row) {
+      return [row.date, row.name, row.type].join(" | ");
+    }).join("\n");
+  }
+
+  function normalizeWorkerRecord(worker) {
+    var normalized = Object.assign({}, worker || {});
+    normalized.name = String(normalized.name || "").trim();
+    normalized.phone = normalizePhone(normalized.phone);
+    normalized.whatsapp = normalizePhone(normalized.whatsapp) || normalized.phone;
+    normalized.nameKey = normalized.name.toLowerCase();
+    normalized.phoneDigits = normalized.phone;
+    normalized.type = normalized.type || "Other";
+    normalized.searchText = [normalized.name, normalized.phone, normalized.whatsapp, normalized.type, normalized.email || ""].join(" ").toLowerCase();
+    normalized.statutoryProfile = Object.assign(createDefaultWorkerStatutoryProfile(), normalized.statutoryProfile || {});
+    normalized.statutoryProfile.identifiers = Object.assign(createDefaultWorkerStatutoryProfile().identifiers, normalized.statutoryProfile.identifiers || {});
+    return normalized;
+  }
+
+  function normalizeAttendanceRecord(row) {
+    var normalized = Object.assign({}, row || {});
+    normalized.breaks = Array.isArray(normalized.breaks) ? normalized.breaks.map(function (br) {
+      return {
+        startTime: br.startTime || "",
+        endTime: br.endTime || "",
+        type: br.type || "Lunch",
+        note: String(br.note || "").trim()
+      };
+    }) : [];
+    normalized.day = normalized.day || (normalized.date ? getDayName(normalized.date) : "");
+    return normalized;
+  }
+
+  function normalizeLeaveRecord(row) {
+    var normalized = Object.assign({}, row || {});
+    normalized.reason = String(normalized.reason || "").trim();
+    normalized.attachment = normalized.attachment || null;
+    return normalized;
+  }
+
+  function normalizePhone(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  function validateWorkerWageConfig(worker) {
+    if ((worker.wageType === "hourly" || worker.wageType === "daily") && numberValue(worker.standardHours, 0) <= 0) {
+      return { ok: false, field: refs.standardHours, message: "Standard hours must be greater than zero for hourly or daily wages." };
+    }
+    if (worker.wageType === "hourly" && numberValue(worker.hourlyRate, 0) <= 0) {
+      return { ok: false, field: refs.hourlyRate, message: "Hourly workers need an hourly rate greater than zero." };
+    }
+    if (worker.wageType === "daily" && numberValue(worker.dailyRate, 0) <= 0) {
+      return { ok: false, field: refs.dailyRate, message: "Daily workers need a daily rate greater than zero." };
+    }
+    if (worker.wageType === "task" && numberValue(worker.taskRate, 0) <= 0) {
+      return { ok: false, field: refs.taskRate, message: "Task-based workers need a task rate greater than zero." };
+    }
+    if (numberValue(worker.overtimeRate, 0) < 0 || numberValue(worker.allowance, 0) < 0) {
+      return { ok: false, field: refs.overtimeRate, message: "Overtime and allowance values cannot be negative." };
+    }
+    return { ok: true };
+  }
+
+  function bindValidationListeners(form) {
+    if (!form) return;
+    form.addEventListener("input", function (event) {
+      if (event.target && event.target.form === form) clearFieldError(event.target);
+    });
+    form.addEventListener("change", function (event) {
+      if (event.target && event.target.form === form) clearFieldError(event.target);
+    });
+  }
+
+  function reportValidation(field, message) {
+    setFieldError(field, message);
+    showToast(message);
+    if (field && field.focus) field.focus();
+    return null;
+  }
+
+  function setFieldError(field, message) {
+    if (!field) return;
+    var container = getFieldContainer(field);
+    var errorNode = container.querySelector('.field-error[data-for="' + (field.id || container.id || "field") + '"]');
+    if (!errorNode) {
+      errorNode = document.createElement("div");
+      errorNode.className = "field-error";
+      errorNode.dataset.for = field.id || container.id || "field";
+      container.appendChild(errorNode);
+    }
+    errorNode.textContent = message;
+    field.classList.add("input-error");
+    field.setAttribute("aria-invalid", "true");
+    container.classList.add("label-error");
+  }
+
+  function clearFieldError(field) {
+    if (!field) return;
+    var container = getFieldContainer(field);
+    var selector = '.field-error[data-for="' + (field.id || container.id || "field") + '"]';
+    var errorNode = container.querySelector(selector);
+    if (errorNode) errorNode.remove();
+    field.classList.remove("input-error");
+    field.removeAttribute("aria-invalid");
+    if (!container.querySelector(".field-error")) container.classList.remove("label-error");
+  }
+
+  function clearFormErrors(form) {
+    if (!form) return;
+    form.querySelectorAll(".field-error").forEach(function (node) { node.remove(); });
+    form.querySelectorAll(".input-error").forEach(function (field) {
+      field.classList.remove("input-error");
+      field.removeAttribute("aria-invalid");
+    });
+    form.querySelectorAll(".label-error").forEach(function (node) {
+      node.classList.remove("label-error");
+    });
+  }
+
+  function getFieldContainer(field) {
+    return field.closest("label") || field.parentElement || field;
+  }
+
+  function getCurrentYearRange(today, yearMode) {
+    var year = today.getFullYear();
+    if (yearMode === "calendar") {
+      return {
+        from: toDateInput(new Date(year, 0, 1)),
+        to: toDateInput(new Date(year, 11, 31))
+      };
+    }
+    var fyStartYear = today.getMonth() >= 3 ? year : year - 1;
+    return {
+      from: toDateInput(new Date(fyStartYear, 3, 1)),
+      to: toDateInput(new Date(fyStartYear + 1, 2, 31))
+    };
+  }
+
+  function syncReportPresetOption() {
+    var option = refs.reportPreset.querySelector('option[value="year"]') || refs.reportPreset.querySelector('option[value="fy"]');
+    if (!option) return;
+    option.value = "year";
+    option.textContent = state.settings.yearMode === "calendar" ? "Current calendar year" : "Current financial year";
+  }
+
+  function getAllLeaveSources() {
+    return state.leaveRecords.concat(getConfiguredHolidayRecords()).sort(byLeaveDateDesc);
+  }
+
+  function getConfiguredHolidayRecords() {
+    return (state.settings.publicHolidays || []).map(function (row) {
+      return {
+        id: "holiday-" + row.date + "-" + row.name.toLowerCase().replace(/\s+/g, "-"),
+        workerId: "",
+        type: row.type,
+        startDate: row.date,
+        endDate: row.date,
+        reason: row.name,
+        attachment: null,
+        source: "settings-holiday",
+        createdAt: row.date + "T00:00:00.000Z",
+        updatedAt: row.date + "T00:00:00.000Z"
+      };
+    });
+  }
+
+  function queueReportsRender(immediate) {
+    window.clearTimeout(deferredReportTimer);
+    if (immediate || state.activeView === "reports") {
+      renderReports();
+      return;
+    }
+    deferredReportTimer = window.setTimeout(renderReports, 140);
+  }
+
+  function buildReportDataset(from, to, workerId) {
+    var worker = ensureReportWorker();
+    if (!worker) return Promise.resolve(buildReportDatasetSync(from, to, workerId));
+    return new Promise(function (resolve, reject) {
+      var requestId = "report-" + (++reportWorkerState.sequence);
+      reportWorkerState.pending[requestId] = { resolve: resolve, reject: reject };
+      worker.postMessage({
+        type: "build-report",
+        requestId: requestId,
+        from: from,
+        to: to,
+        workerId: workerId,
+        settings: {
+          defaultHours: state.settings.defaultHours,
+          overtimeMode: state.settings.overtimeMode,
+          dailyPolicy: state.settings.dailyPolicy
+        },
+        workers: state.workers,
+        attendance: state.attendance
+      });
+    });
+  }
+
+  function ensureReportWorker() {
+    if (location.protocol === "file:" || !window.Worker) return null;
+    if (reportWorkerState.worker) return reportWorkerState.worker;
+    try {
+      reportWorkerState.worker = new Worker("report-worker.js");
+      reportWorkerState.worker.onmessage = function (event) {
+        var payload = event.data || {};
+        var pending = reportWorkerState.pending[payload.requestId];
+        if (!pending) return;
+        delete reportWorkerState.pending[payload.requestId];
+        pending.resolve(payload.result);
+      };
+      reportWorkerState.worker.onerror = function (error) {
+        Object.keys(reportWorkerState.pending).forEach(function (key) {
+          reportWorkerState.pending[key].reject(error);
+          delete reportWorkerState.pending[key];
+        });
+        reportWorkerState.worker = null;
+      };
+      return reportWorkerState.worker;
+    } catch (error) {
+      console.warn("Report worker unavailable, falling back to main thread.", error);
+      reportWorkerState.worker = null;
+      return null;
+    }
+  }
+
+  function buildReportDatasetSync(from, to, workerId) {
+    var rows = state.attendance.filter(function (row) {
+      return row.date >= from && row.date <= to && (!workerId || row.workerId === workerId);
+    }).map(function (row) {
+      var worker = getWorker(row.workerId) || {};
+      var calc = calculateAttendance(row, worker);
+      return Object.assign({}, row, { worker: worker, calculation: calc });
+    });
+    var workerGroups = {};
+    var categoryGroups = {};
+    rows.forEach(function (row) {
+      var worker = row.worker || {};
+      var workerKey = row.workerId || "unknown";
+      var workerGroup = workerGroups[workerKey] || (workerGroups[workerKey] = {
+        name: worker.name || "Unknown",
+        type: worker.type || "-",
+        days: 0,
+        netMinutes: 0,
+        overtimeMinutes: 0,
+        totalWage: 0
+      });
+      workerGroup.days += 1;
+      workerGroup.netMinutes += row.calculation.netMinutes || 0;
+      workerGroup.overtimeMinutes += row.calculation.overtimeMinutes || 0;
+      workerGroup.totalWage += row.calculation.totalWage || 0;
+
+      var category = worker.type || "Unknown";
+      var categoryGroup = categoryGroups[category] || (categoryGroups[category] = {
+        category: category,
+        workerIds: {},
+        days: 0,
+        netMinutes: 0,
+        totalWage: 0
+      });
+      categoryGroup.workerIds[workerKey] = true;
+      categoryGroup.days += 1;
+      categoryGroup.netMinutes += row.calculation.netMinutes || 0;
+      categoryGroup.totalWage += row.calculation.totalWage || 0;
+    });
+    return {
+      rows: rows,
+      attendanceDays: rows.filter(function (row) { return row.status === "present" || row.status === "half-day"; }).length,
+      totals: sumCalculated(rows),
+      workerSummary: Object.keys(workerGroups).map(function (key) { return workerGroups[key]; }).sort(function (a, b) { return a.name.localeCompare(b.name); }),
+      categorySummary: Object.keys(categoryGroups).map(function (key) {
+        return {
+          category: categoryGroups[key].category,
+          workerCount: Object.keys(categoryGroups[key].workerIds).length,
+          days: categoryGroups[key].days,
+          netMinutes: categoryGroups[key].netMinutes,
+          totalWage: categoryGroups[key].totalWage
+        };
+      }).sort(function (a, b) { return a.category.localeCompare(b.category); })
+    };
+  }
+
+  function findDuplicateAttendance(record) {
+    if (!db || !record) return Promise.resolve(state.attendance.find(function (row) {
+      return row.id !== record.id && row.workerId === record.workerId && row.date === record.date;
+    }) || null);
+    return getByIndex("attendance", "workerDate", [record.workerId, record.date]).then(function (matches) {
+      matches = matches.filter(function (row) { return row.id !== record.id; });
+      return matches[0] || state.attendance.find(function (row) {
+        return row.id !== record.id && row.workerId === record.workerId && row.date === record.date;
+      }) || null;
+    });
+  }
+
+  function findDuplicateWorker(worker) {
+    var fallback = state.workers.find(function (row) {
+      return row.id !== worker.id && row.phoneDigits === worker.phoneDigits;
+    }) || null;
+    if (!db || !worker || !worker.phoneDigits) return Promise.resolve(fallback);
+    return getByIndex("workers", "phoneDigits", worker.phoneDigits).then(function (matches) {
+      matches = matches.filter(function (row) { return row.id !== worker.id; });
+      return matches[0] || fallback;
+    });
+  }
+
+  function getByIndex(storeName, indexName, query) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(storeName, "readonly");
+      var store = tx.objectStore(storeName);
+      if (!store.indexNames.contains(indexName)) {
+        resolve([]);
+        return;
+      }
+      var request = store.index(indexName).getAll(query);
+      request.onsuccess = function () { resolve(request.result || []); };
+      request.onerror = function () { reject(request.error); };
+    });
+  }
+
+  function debounce(fn, wait) {
+    var timer = 0;
+    return function () {
+      var args = arguments;
+      var context = this;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(function () {
+        fn.apply(context, args);
+      }, wait);
+    };
   }
 
   window.WorkPay = {

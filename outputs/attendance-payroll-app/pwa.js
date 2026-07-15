@@ -1,11 +1,12 @@
 (function () {
   "use strict";
 
-  var CACHE_NAME = "workpay-india-runtime-v2";
+  var CACHE_NAME = "workpay-india-runtime-v3";
   var ASSETS = [
     "./index.html",
     "./styles.css",
     "./app.js",
+    "./report-worker.js",
     "./manifest.webmanifest",
     "./icon.svg"
   ];
