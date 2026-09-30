@@ -19,6 +19,11 @@ if not exist "%GIT%" goto :error
 
 "%GIT%" -c "safe.directory=%REPO%" status --short >> "%LOG%" 2>&1
 
+echo Synchronizing with GitHub before push...
+echo Synchronizing with GitHub before push... >> "%LOG%"
+"%GIT%" -c "safe.directory=%REPO%" -c http.version=HTTP/1.1 pull --rebase origin main >> "%LOG%" 2>&1
+if errorlevel 1 goto :error
+
 set "PUSH_OK=0"
 for /l %%A in (1,1,3) do (
     echo Push attempt %%A of 3...

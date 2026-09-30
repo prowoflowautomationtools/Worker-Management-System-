@@ -9,7 +9,7 @@ cd /d "%REPO%"
 if errorlevel 1 goto :error
 if not exist "%GIT%" goto :error
 
-echo Running runtime verification...
+echo Showing pending project changes...
 "%GIT%" -c "safe.directory=%REPO%" status --short
 echo.
 echo Stage the verified application and documentation files? Press Ctrl+C to cancel.
