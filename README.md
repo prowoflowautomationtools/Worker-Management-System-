@@ -8,7 +8,7 @@ The deployable app lives in:
 
 `outputs/attendance-payroll-app/`
 
-Open `outputs/attendance-payroll-app/index.html` locally, or publish it through the included GitHub Pages workflow.
+Publish it through the included GitHub Pages workflow. For local testing on Windows, double-click `START-LOCAL-APP.cmd`; it starts an HTTP server using Node.js or Python and opens `http://127.0.0.1:4173/`. You can also run `npm run serve`. Do not open the HTML file directly because `file://` pages have restricted origin behavior and cannot fully exercise PWA features.
 
 ## Repository
 
@@ -38,3 +38,6 @@ See [CHANGELOG.md](CHANGELOG.md).
 This project is documented in business-process order so non-technical stakeholders and technical contributors can understand and customize it more easily.
 
 Start with [docs/README.md](docs/README.md).
+
+The business-process folder structure for public understanding and future AI-assisted customization is available at [business-processes/README.md](business-processes/README.md).
+For public contribution and AI-assisted maintenance guidance, see [CONTRIBUTING.md](CONTRIBUTING.md).

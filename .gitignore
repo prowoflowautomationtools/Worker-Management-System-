@@ -1,7 +1,10 @@
 .agents/
 .codex/
 work/
+Worker Attendance Backup/
 
+audit-live-*.png
+github-push-result.txt
 *.log
 *.tmp
 Thumbs.db

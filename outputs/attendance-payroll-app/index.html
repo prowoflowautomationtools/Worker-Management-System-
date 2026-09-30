@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0f6b5e">
   <meta name="description" content="Worker attendance, leave, payroll and wage tracking for Indian worksites.">
   <title>Worker Attendance & Payroll</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -69,7 +70,7 @@
           </article>
           <article class="metric-card">
             <span>Wages Today</span>
-            <strong id="metricWages">&#8377;0.00</strong>
+            <strong id="metricWages">0.00</strong>
             <small>Calculated to the minute</small>
           </article>
         </div>
@@ -150,24 +151,24 @@
               <label>Standard hours per day
                 <input id="standardHours" type="number" min="0" step="0.25" value="8">
               </label>
-              <label>Hourly rate (&#8377;)
+              <label>Hourly rate
                 <input id="hourlyRate" type="number" min="0" step="0.01" value="0">
               </label>
-              <label>Daily rate (&#8377;)
+              <label>Daily rate
                 <input id="dailyRate" type="number" min="0" step="0.01" value="0">
               </label>
-              <label>Overtime rate per hour (&#8377;)
+              <label>Overtime rate per hour
                 <input id="overtimeRate" type="number" min="0" step="0.01" value="0">
               </label>
-              <label>Task rate (&#8377; per unit)
+              <label>Task rate per unit
                 <input id="taskRate" type="number" min="0" step="0.01" value="0">
               </label>
-              <label>Daily allowance/extra (&#8377;)
+              <label>Daily allowance or extra
                 <input id="allowance" type="number" min="0" step="0.01" value="0">
               </label>
             </div>
             <label>Additional compensation settings
-              <textarea id="compensationNotes" rows="3" placeholder="PF/ESI notes, site allowance, piece-rate notes, or contractor terms"></textarea>
+              <textarea id="compensationNotes" rows="3" placeholder="Compliance notes, site allowance, piece-rate notes, or contractor terms"></textarea>
             </label>
             <div class="form-actions">
               <button class="primary-button" type="submit">Save worker</button>
@@ -221,7 +222,7 @@
               <label>Task units completed
                 <input id="taskUnits" type="number" min="0" step="0.01" value="0">
               </label>
-              <label>Task rate override (&#8377;)
+              <label>Task rate override
                 <input id="taskRateOverride" type="number" min="0" step="0.01" placeholder="Optional">
               </label>
             </div>
@@ -331,7 +332,7 @@
                 <option value="today">Today</option>
                 <option value="week">This week</option>
                 <option value="month">This month</option>
-                <option value="fy">Current financial year</option>
+                <option value="year">Current financial year</option>
                 <option value="custom">Custom range</option>
               </select>
               <input id="reportFrom" class="compact-input" type="date">
@@ -359,7 +360,7 @@
             </article>
             <article class="metric-card">
               <span>Total Wages</span>
-              <strong id="reportWages">&#8377;0.00</strong>
+              <strong id="reportWages">0.00</strong>
               <small>Regular, OT, task, extras</small>
             </article>
           </div>
@@ -437,6 +438,15 @@
             <label>Business/site name
               <input id="settingBusinessName" placeholder="Optional">
             </label>
+            <label>Currency
+              <select id="settingCurrencyCode">
+                <option value="INR">Indian Rupee (INR / ₹)</option>
+                <option value="USD">US Dollar (USD / $)</option>
+                <option value="EUR">Euro (EUR / €)</option>
+                <option value="GBP">British Pound (GBP / £)</option>
+                <option value="AED">UAE Dirham (AED)</option>
+              </select>
+            </label>
             <label>Default standard hours
               <input id="settingDefaultHours" type="number" min="0" step="0.25" value="8">
             </label>
@@ -458,16 +468,73 @@
                 <option value="dark">Dark</option>
               </select>
             </label>
+            <label>Time display
+              <select id="settingTimeFormat">
+                <option value="24h">24-hour</option>
+                <option value="12h">12-hour</option>
+              </select>
+            </label>
             <label>Date display
               <select id="settingDateFormat">
                 <option value="ddmmyyyy">DD/MM/YYYY</option>
                 <option value="medium">DD Mon YYYY</option>
               </select>
             </label>
+            <label>Reporting year
+              <select id="settingYearMode">
+                <option value="financial">Financial year (1 April to 31 March)</option>
+                <option value="calendar">Calendar year (1 January to 31 December)</option>
+              </select>
+            </label>
+          </div>
+          <div class="settings-crud-grid">
+            <section class="settings-copy">
+              <h3>Public holiday calendar</h3>
+              <label>Indian public holidays
+                <textarea id="settingPublicHolidays" rows="7" placeholder="YYYY-MM-DD | Holiday name | national-holiday&#10;2026-01-26 | Republic Day | national-holiday&#10;2026-08-15 | Independence Day | national-holiday"></textarea>
+                <span class="field-help">One holiday per line. Use format: date | holiday name | type. Type can be `national-holiday`, `festival-holiday`, or `site-holiday`.</span>
+              </label>
+            </section>
+
+            <section class="settings-copy">
+              <h3>Future statutory compliance</h3>
+              <div class="form-grid">
+                <label>Establishment state
+                  <input id="settingEstablishmentState" placeholder="e.g. Maharashtra">
+                </label>
+                <label>PF preparedness
+                  <select id="settingPfEnabled">
+                    <option value="false">Not configured</option>
+                    <option value="true">Prepared for future use</option>
+                  </select>
+                </label>
+                <label>ESI preparedness
+                  <select id="settingEsiEnabled">
+                    <option value="false">Not configured</option>
+                    <option value="true">Prepared for future use</option>
+                  </select>
+                </label>
+                <label>TDS preparedness
+                  <select id="settingTdsEnabled">
+                    <option value="false">Not configured</option>
+                    <option value="true">Prepared for future use</option>
+                  </select>
+                </label>
+                <label>Professional Tax preparedness
+                  <select id="settingPtEnabled">
+                    <option value="false">Not configured</option>
+                    <option value="true">Prepared for future use</option>
+                  </select>
+                </label>
+              </div>
+              <label>Compliance notes
+                <textarea id="settingStatutoryNotes" rows="4" placeholder="Keep future PF, ESI, TDS, and Professional Tax assumptions here without affecting current payroll rules."></textarea>
+              </label>
+            </section>
           </div>
           <div class="settings-copy">
             <h3>Database design</h3>
-            <p>IndexedDB object stores: workers, attendance, leaveRecords. Each attendance record references a worker id and stores break rows as structured nested data. LocalStorage stores app settings and master data. SessionStorage stores the last report filter. A cookie stores the last opened view for convenient return.</p>
+            <p>IndexedDB object stores: workers, attendance, leaveRecords. Indexed lookups support duplicate checks and range-driven reporting. LocalStorage stores settings, master data, public holiday configuration, and future compliance defaults. SessionStorage stores the last report filter. A cookie stores the last opened view for convenient return.</p>
           </div>
           <div class="form-actions">
             <button class="primary-button" id="saveSettingsBtn" type="button">Save settings</button>
@@ -506,6 +573,48 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app/00-start-here-app-overview/shared-utilities.js"></script>
+  <script src="app/00-start-here-app-overview/ui-feedback.js"></script>
+  <script src="app/00-start-here-app-overview/navigation-controller.js"></script>
+  <script src="app/00-start-here-app-overview/demo-data-rules.js"></script>
+  <script src="app/00-start-here-app-overview/dynamic-action-binding.js"></script>
+  <script src="app/00-start-here-app-overview/dashboard-screen-renderer.js"></script>
+  <script src="app/00-start-here-app-overview/event-bindings.js"></script>
+  <script src="app/01-worker-records-and-onboarding/worker-record-rules.js"></script>
+  <script src="app/01-worker-records-and-onboarding/worker-screen-renderer.js"></script>
+  <script src="app/01-worker-records-and-onboarding/worker-profile-controller.js"></script>
+  <script src="app/02-daily-attendance-register/attendance-record-rules.js"></script>
+  <script src="app/02-daily-attendance-register/attendance-screen-renderer.js"></script>
+  <script src="app/02-daily-attendance-register/attendance-form-controller.js"></script>
+  <script src="app/03-work-breaks-register/break-record-rules.js"></script>
+  <script src="app/03-work-breaks-register/attendance-break-controller.js"></script>
+  <script src="app/04-leave-and-holiday-register/leave-record-rules.js"></script>
+  <script src="app/04-leave-and-holiday-register/attachment-file-reader.js"></script>
+  <script src="app/04-leave-and-holiday-register/leave-holiday-rules.js"></script>
+  <script src="app/04-leave-and-holiday-register/leave-screen-renderer.js"></script>
+  <script src="app/04-leave-and-holiday-register/leave-form-controller.js"></script>
+  <script src="app/05-wage-and-payroll-calculation/payroll-calculation-rules.js"></script>
+  <script src="app/06-reports-reviews-and-exports/report-aggregation-rules.js"></script>
+  <script src="app/06-reports-reviews-and-exports/backup-export-rules.js"></script>
+  <script src="app/06-reports-reviews-and-exports/report-screen-renderer.js"></script>
+  <script src="app/06-reports-reviews-and-exports/report-filter-controller.js"></script>
+  <script src="app/06-reports-reviews-and-exports/import-export-controller.js"></script>
+  <script src="app/06-reports-reviews-and-exports/report-worker-client.js"></script>
+  <script src="app/06-reports-reviews-and-exports/file-download-service.js"></script>
+  <script src="app/06-reports-reviews-and-exports/backup-import-service.js"></script>
+  <script src="app/07-settings-master-data-and-policies/settings-master-data-rules.js"></script>
+  <script src="app/07-settings-master-data-and-policies/master-data-rules.js"></script>
+  <script src="app/07-settings-master-data-and-policies/master-data-screen-renderer.js"></script>
+  <script src="app/07-settings-master-data-and-policies/settings-form-controller.js"></script>
+  <script src="app/07-settings-master-data-and-policies/master-data-controller.js"></script>
+  <script src="app/08-local-data-storage-and-backup/settings-storage.js"></script>
+  <script src="app/08-local-data-storage-and-backup/session-state-storage.js"></script>
+  <script src="app/08-local-data-storage-and-backup/local-database.js"></script>
+  <script src="app/08-local-data-storage-and-backup/record-normalization-rules.js"></script>
+  <script src="app/08-local-data-storage-and-backup/data-refresh-service.js"></script>
+  <script src="app/08-local-data-storage-and-backup/application-storage-adapter.js"></script>
+  <script src="app/11-security-validation-and-quality-checks/validation-rules.js"></script>
+  <script src="app/11-security-validation-and-quality-checks/duplicate-record-rules.js"></script>
   <script src="app.js"></script>
   <script>
     if (location.protocol !== "file:") {

@@ -1,0 +1,10 @@
+{
+  "name": "worker-management-system",
+  "private": true,
+  "version": "1.0.0",
+  "description": "WorkPay India worker attendance and payroll application",
+  "scripts": {
+    "verify": "node tools/quality-checks/verify-runtime.js",
+    "serve": "node tools/local-server.js"
+  }
+}

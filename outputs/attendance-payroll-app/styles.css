@@ -466,6 +466,16 @@ label {
   font-weight: 650;
 }
 
+.field-help,
+.field-error {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.field-help {
+  color: var(--color-muted);
+}
+
 input,
 select,
 textarea {
@@ -494,6 +504,20 @@ input:hover,
 select:hover,
 textarea:hover {
   border-color: var(--color-line-strong);
+}
+
+.input-error {
+  border-color: var(--color-danger) !important;
+  box-shadow: 0 0 0 0.1875rem color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
+.label-error {
+  color: var(--color-danger);
+}
+
+.field-error {
+  color: var(--color-danger);
+  font-weight: 650;
 }
 
 input:focus,
