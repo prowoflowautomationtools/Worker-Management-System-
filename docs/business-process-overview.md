@@ -9,7 +9,7 @@ Purpose: Open the app, navigate between workflows, backup/restore data, and acce
 Current technical location:
 
 - App shell: `outputs/attendance-payroll-app/index.html`
-- Main logic: `outputs/attendance-payroll-app/app.js`
+- Application coordinator: `outputs/attendance-payroll-app/app.js` (business logic is implemented by the numbered modules under `outputs/attendance-payroll-app/app/`)
 - Styling: `outputs/attendance-payroll-app/styles.css`
 - PWA support: `outputs/attendance-payroll-app/pwa.js`, `service-worker.js`, `manifest.webmanifest`
 
@@ -116,4 +116,3 @@ Business value:
 
 - Enables online access from any device.
 - Keeps deployment simple and low-cost.
-

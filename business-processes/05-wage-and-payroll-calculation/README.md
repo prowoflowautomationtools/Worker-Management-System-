@@ -22,7 +22,7 @@ Convert attendance, breaks, task units, wage settings, and overtime rules into p
 - Settings source: Local Storage settings object
 - Report worker consumer: `outputs/attendance-payroll-app/report-worker.js`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `payroll-calculation-rules.js`
 - `payroll-calculation-validation.js`

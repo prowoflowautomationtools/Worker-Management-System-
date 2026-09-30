@@ -10,5 +10,6 @@ Start here:
 4. [Data Storage Design](data-storage-design.md)
 5. [Payroll Calculation Rules](payroll-calculation-rules.md)
 6. [Business Process Project Structure](../business-processes/README.md)
+7. [AI Build Prompt Playbook](ai-build-prompts.md)
 
 The deployed app currently remains in `outputs/attendance-payroll-app/` so GitHub Pages deployment stays stable.

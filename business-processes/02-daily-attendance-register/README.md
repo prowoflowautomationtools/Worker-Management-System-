@@ -22,7 +22,7 @@ Record worker attendance for each date and convert daily activity into payroll-r
 - Key functions: `saveAttendance`, `buildAttendanceFromForm`, `editAttendance`, `deleteAttendance`, `renderAttendanceHistory`
 - Storage: IndexedDB `attendance` store
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `daily-attendance-ui.js`
 - `daily-attendance-rules.js`

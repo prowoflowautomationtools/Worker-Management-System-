@@ -21,7 +21,7 @@ Record all workday breaks so net working time and wage calculations stay accurat
 - Key functions: `addBreakRow`, `collectBreaks`, `renderBreakTypeOptions`, `validateTimes`
 - Calculation dependency: `calculateAttendance`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `work-breaks-ui.js`
 - `work-breaks-rules.js`

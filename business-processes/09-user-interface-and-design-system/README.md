@@ -18,7 +18,7 @@ Keep screens, forms, tables, cards, buttons, messages, and responsive layouts co
 - Main markup: `outputs/attendance-payroll-app/index.html`
 - UI rendering logic: `outputs/attendance-payroll-app/app.js`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `design-tokens.css`
 - `layout-system.css`

@@ -34,7 +34,7 @@ The report worker client runs expensive report preparation off the main UI threa
 - Worker thread: `outputs/attendance-payroll-app/report-worker.js`
 - Payroll dependency: `outputs/attendance-payroll-app/app/05-wage-and-payroll-calculation/payroll-calculation-rules.js`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `reports-ui.js`
 - `report-aggregation-rules.js`

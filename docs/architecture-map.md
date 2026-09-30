@@ -94,9 +94,9 @@ outputs/attendance-payroll-app/
 | 10 - PWA and Deployment | PWA/GitHub Pages | `pwa.js`, `service-worker.js`, `manifest.webmanifest`, `.github/workflows/pages.yml` |
 | 11 - Security and Validation | Validation and regression checks | `app/11-security-validation-and-quality-checks/validation-rules.js`, `app/11-security-validation-and-quality-checks/duplicate-record-rules.js`, `validateWorkerWageConfig`, `validateTimes`, `findDuplicateWorker`, `findDuplicateAttendance` |
 
-## Future Refactor Target
+## Future Extension Reference
 
-The repository now includes a documentation-first business-process structure at:
+The repository includes a documentation-first business-process structure at:
 
 ```text
 business-processes/
@@ -104,7 +104,7 @@ business-processes/
 
 Use it as the public, stakeholder-friendly map for GitHub users, non-technical reviewers, and AI-assisted customization.
 
-When the app is ready for a controlled module refactor, use this business-first folder structure as the migration target:
+For future workflow expansion, use this business-first folder structure as the documentation and ownership map. The current runtime modules already follow this numbering under `outputs/attendance-payroll-app/app/`.
 
 ```text
 business-processes/

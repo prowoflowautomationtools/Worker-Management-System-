@@ -27,7 +27,7 @@ Keep worker, attendance, leave, holiday, settings, and backup data reliable in t
 - Cookies: last opened view
 - Key functions: `normalizeWorkerRecord`, `normalizeAttendanceRecord`, `normalizeLeaveRecord`, `openDb`, `getAll`, `put`, `remove`, `clearStore`, `loadSettings`, `saveSettings`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `local-database.js`
 - `record-normalization-rules.js`

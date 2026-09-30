@@ -22,7 +22,7 @@ Configure app-wide business preferences and reusable master data without changin
 - Pure settings update mapping: `buildSettingsUpdate`
 - Storage: Local Storage settings and master data
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `settings-ui.js`
 - `master-data-rules.js`

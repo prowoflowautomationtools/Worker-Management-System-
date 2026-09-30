@@ -62,6 +62,8 @@ When code is later extracted from the current app, use:
 
 ## Current Source of Truth
 
+The `business-processes/` folder is documentation for business users and contributors. The technical documentation lives in `docs/`. The deployable runtime source remains under `outputs/attendance-payroll-app/`.
+
 The deployable source remains:
 
 ```text

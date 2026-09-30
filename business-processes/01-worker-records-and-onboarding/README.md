@@ -20,7 +20,7 @@ Maintain worker master records before recording attendance or calculating wages.
 - Key functions: `saveWorker`, `editWorker`, `deleteWorker`, `renderWorkers`, `findDuplicateWorker`
 - Storage: IndexedDB `workers` store
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `worker-records-ui.js`
 - `worker-records-rules.js`

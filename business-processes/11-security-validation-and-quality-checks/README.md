@@ -24,7 +24,7 @@ Protect user data, prevent invalid records, and reduce regressions before releas
 - Import/export functions: `importJson`, `exportJson`
 - Runtime files to parse-check: `app.js`, `pwa.js`, `service-worker.js`, `report-worker.js`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `validation-checklist.md`
 - `validation-rules.js`

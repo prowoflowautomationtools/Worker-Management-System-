@@ -8,7 +8,7 @@ These are low-risk changes:
 
 - Change labels, placeholder text, headings, and help text in `index.html`.
 - Adjust colors, spacing, fonts, and responsive layout in `styles.css`.
-- Add default worker categories or break types in `app.js`.
+- Add default worker categories or break types in `outputs/attendance-payroll-app/app/07-settings-master-data-and-policies/settings-master-data-rules.js`.
 - Update README and documentation.
 - Change GitHub Pages or repository text.
 
@@ -58,4 +58,3 @@ After any change, verify:
 - CSV export still downloads.
 - JSON backup/import still works.
 - GitHub Pages deployment still serves the app.
-

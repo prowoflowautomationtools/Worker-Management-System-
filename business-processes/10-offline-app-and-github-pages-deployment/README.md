@@ -19,7 +19,9 @@ Make the app available online through GitHub Pages and keep supported offline be
 - GitHub Pages source: `outputs/attendance-payroll-app/`
 - Push helper: `PUSH-TO-GITHUB.cmd`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
+
+The current workflow is `.github/workflows/pages.yml`; the names below are planning examples only.
 
 - `deployment-guide.md`
 - `github-pages-workflow.yml`

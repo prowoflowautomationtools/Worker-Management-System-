@@ -16,12 +16,13 @@ This is the entry point for understanding the Worker Management System, how the 
 - App shell: `outputs/attendance-payroll-app/index.html`
 - Shared utilities: `outputs/attendance-payroll-app/app/00-start-here-app-overview/shared-utilities.js`
 - Shared display formatting: money, date, time, day name, duration, CSV, escaping, and browser helpers
-- Main logic: `outputs/attendance-payroll-app/app.js`
+- Application coordinator: `outputs/attendance-payroll-app/app.js`
+- Business modules: `outputs/attendance-payroll-app/app/` (numbered workflow modules)
 - Styling: `outputs/attendance-payroll-app/styles.css`
 - Version marker: `outputs/attendance-payroll-app/VERSION.txt`
 - Deployment helper: `PUSH-TO-GITHUB.cmd`
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `app-overview.md`
 - `navigation-map.md`
@@ -37,6 +38,5 @@ This is the entry point for understanding the Worker Management System, how the 
 - Dynamic action binding: `outputs/attendance-payroll-app/app/00-start-here-app-overview/dynamic-action-binding.js`
 - Dashboard screen renderer: `outputs/attendance-payroll-app/app/00-start-here-app-overview/dashboard-screen-renderer.js`
 - Event bindings: `outputs/attendance-payroll-app/app/00-start-here-app-overview/event-bindings.js`
-- Application lifecycle: `outputs/attendance-payroll-app/app/00-start-here-app-overview/application-lifecycle.js`
 
 UI feedback keeps toast notifications and inline validation behavior consistent across all workflows.

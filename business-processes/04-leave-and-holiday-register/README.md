@@ -25,7 +25,7 @@ Record worker leave, site holidays, festival holidays, national holidays, reason
 - Key functions: `getConfiguredHolidayRecords`, `getAllLeaveSources`, `saveLeaveRecord`, `editLeave`, `deleteLeave`, `renderLeaveRecords`, `readAttachment`
 - Storage: IndexedDB `leaveRecords` store
 
-## Future File Names
+## Planned Future File Names (Not Current Files)
 
 - `leave-holiday-ui.js`
 - `leave-holiday-rules.js`
